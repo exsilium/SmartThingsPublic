@@ -3,7 +3,7 @@
  */
 
 metadata {
-  definition (name: "PXBee TriggerV2", namespace: "exsilium", author: "Sten Feldman", ocfDeviceType: "oic.d.door", runLocally: true, minHubCoreVersion: '000.019.00012', executeCommandsLocally: true, genericHandler: "Zigbee") {
+  definition (name: "PXBee Trigger Gate", namespace: "exsilium", author: "Sten Feldman", ocfDeviceType: "oic.d.door", runLocally: true, minHubCoreVersion: '000.019.00012', executeCommandsLocally: true, genericHandler: "Zigbee") {
     capability "Door Control"
     capability "Contact Sensor"
     capability "Refresh"

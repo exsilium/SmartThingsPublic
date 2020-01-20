@@ -11,7 +11,7 @@ metadata {
     
     command "openPedestrian"
 
-    fingerprint profileId: "0104", inClusters: "0000, 0003, 0006", manufacturer: "PXBee", model: "Trigger", deviceJoinName: "TriggerV2 WIP Gate Opener"
+    fingerprint profileId: "0104", inClusters: "0000, 0003, 0006", manufacturer: "PXBee", model: "Trigger", deviceJoinName: "Trigger WIP Gate Opener"
   }
 
   simulator {

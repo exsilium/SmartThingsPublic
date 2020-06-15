@@ -1,17 +1,42 @@
 /**
- *	Copyright 2020 Sten Feldman
- */
+ * BSD 2-Clause License
+ *
+ * Copyright (c) 2020, Sten Feldman
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ *
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ **/
 
 metadata {
-  definition (name: "PXBee Trigger Gate", namespace: "exsilium", author: "Sten Feldman", ocfDeviceType: "oic.d.door", runLocally: true, minHubCoreVersion: '000.019.00012', executeCommandsLocally: true, genericHandler: "Zigbee") {
+  definition (name: "PXBee Trigger Gate", namespace: "exsilium", author: "Sten Feldman", runLocally: true, minHubCoreVersion: '000.019.00012', executeCommandsLocally: true, genericHandler: "Zigbee") {
     capability "Door Control"
     capability "Contact Sensor"
     capability "Refresh"
     capability "Health Check"
     
     command "openPedestrian"
+    command "sendToggle"
 
-    fingerprint profileId: "0104", inClusters: "0000, 0003, 0006", manufacturer: "PXBee", model: "Trigger", deviceJoinName: "Trigger WIP Gate Opener"
+    fingerprint profileId: "0104", inClusters: "0000, 0003, 0006, 000F", manufacturer: "PXBee", model: "Trigger", deviceJoinName: "Trigger WIP Gate Opener"
   }
 
   simulator {
@@ -31,11 +56,11 @@ metadata {
     standardTile("close", "device.door", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
       state "default", label:'close', action:"door control.close", icon:"st.contact.contact.closed"
     }
-    standardTile("pedestrian", "device.door", inactiveLabel: false, decoration: "flat", width: 1, height: 1) {
+    standardTile("pedestrian", "device.door", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
       state "default", label:'Pedestrian', action:"openPedestrian", icon:"st.Health & Wellness.health12"
     }   
-    standardTile("refresh", "device.refresh", inactiveLabel: false, decoration: "flat", width: 1, height: 1) {
-      state "default", label:"", action:"refresh.refresh", icon:"st.secondary.refresh"
+    standardTile("sendToggle", "device.door", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+      state "default", label:"Toggle", action:"sendToggle", icon:"st.motion.motion.active"
     }
     standardTile("r1", "device.r1", decoration: "flat", width: 1, height: 1) {
       state "default", label:"R1", icon:"st.Health & Wellness.health9"
@@ -43,24 +68,30 @@ metadata {
       state "exec", label:"EXEC", icon:"st.motion.motion.active", backgroundColor:"#e86d13"
     }
     standardTile("r2", "device.r2", decoration: "flat", width: 1, height: 1) {
-      state "default", label:"R1", icon:"st.Health & Wellness.health9"
+      state "default", label:"R2", icon:"st.Health & Wellness.health9"
       state "trigger", label:"TRIGGER", icon:"st.motion.motion.active", backgroundColor:"#00A0DC"
       state "exec", label:"EXEC", icon:"st.motion.motion.active", backgroundColor:"#e86d13"
     }
     standardTile("r3", "device.r3", decoration: "flat", width: 1, height: 1) {
-      state "default", label:"R1", icon:"st.Health & Wellness.health9"
+      state "default", label:"R3", icon:"st.Health & Wellness.health9"
       state "trigger", label:"TRIGGER", icon:"st.motion.motion.active", backgroundColor:"#00A0DC"
       state "exec", label:"EXEC", icon:"st.motion.motion.active", backgroundColor:"#e86d13"
     }
     standardTile("r4", "device.r4", decoration: "flat", width: 1, height: 1) {
-      state "default", label:"R1", icon:"st.Health & Wellness.health9"
+      state "default", label:"R4", icon:"st.Health & Wellness.health9"
       state "trigger", label:"TRIGGER", icon:"st.motion.motion.active", backgroundColor:"#00A0DC"
       state "exec", label:"EXEC", icon:"st.motion.motion.active", backgroundColor:"#e86d13"
     }
+    standardTile("refresh", "device.refresh", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+      state "default", label:"", action:"refresh.refresh", icon:"st.secondary.refresh"
+    }
     main "toggle"
-    details(["toggle", "open", "close", "pedestrian", "refresh", "r1", "r2", "r3", "r4"])
+    details(["toggle", "open", "close", "pedestrian", "sendToggle", "r1", "r2", "r3", "r4", "refresh"])
   }
 }
+
+// Globals
+private getBINARY_INPUT_CLUSTER() { 0x000F }
 
 // Parse incoming device messages to generate events
 def parse(String description) {
@@ -79,6 +110,9 @@ def parse(String description) {
       else if (eventDescMap?.sourceEndpoint == "EC") {
         eventMap["name"] = "r3"
       }
+      else if (eventDescMap?.sourceEndpoint == "ED") {
+        eventMap["name"] = "r4"
+      }
       else {
         log.error "Message received from unknown sourceEndpoint: $eventDescMap?.sourceEndpoint"
         return
@@ -90,6 +124,10 @@ def parse(String description) {
       else {
         eventMap["value"] = "default"
       }
+    }
+    else if(eventDescMap?.clusterInt == BINARY_INPUT_CLUSTER) {
+      log.debug "Binary Input Cluster event received"
+      log.debug "eventDescMap: $eventDescMap"
     }
     else {
       log.warn "DID NOT PARSE MESSAGE for description : $description"
@@ -114,6 +152,10 @@ def openPedestrian() {
   zigbee.command(zigbee.ONOFF_CLUSTER, 0x01, "", [destEndpoint: 0xEC]) + sendEvent(name: "r3", value: "trigger")
 }
 
+def sendToggle() {
+  zigbee.command(zigbee.ONOFF_CLUSTER, 0x01, "", [destEndpoint: 0xED]) + sendEvent(name: "r4", value: "trigger")
+}
+
 def finishOpening() {
   sendEvent(name: "door", value: "open")
   sendEvent(name: "contact", value: "open")
@@ -133,6 +175,10 @@ def ping() {
 
 def refresh() {
   // readAttribute(ONOFF_CLUSTER, 0x0000)
+  sendEvent(name: "r1", value: "default")
+  runIn(1, sendEvent(name: "r2", value: "default"))
+  runIn(2, sendEvent(name: "r3", value: "default"))
+  runIn(3, sendEvent(name: "r4", value: "default"))
   zigbee.onOffRefresh() + zigbee.onOffConfig()
 }
 

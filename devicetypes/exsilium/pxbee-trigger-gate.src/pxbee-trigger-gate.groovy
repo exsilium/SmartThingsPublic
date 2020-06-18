@@ -25,6 +25,8 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **/
+ 
+import physicalgraph.zigbee.zcl.DataType
 
 metadata {
   definition (name: "PXBee Trigger Gate", namespace: "exsilium", author: "Sten Feldman", runLocally: true, minHubCoreVersion: '000.019.00012', executeCommandsLocally: true, genericHandler: "Zigbee") {
@@ -62,6 +64,9 @@ metadata {
     standardTile("sendToggle", "device.door", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
       state "default", label:"Toggle", action:"sendToggle", icon:"st.motion.motion.active"
     }
+    standardTile("refresh", "device.refresh", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
+      state "default", label:"", action:"refresh.refresh", icon:"st.secondary.refresh"
+    }
     standardTile("r1", "device.r1", decoration: "flat", width: 1, height: 1) {
       state "default", label:"R1", icon:"st.Health & Wellness.health9"
       state "trigger", label:"TRIGGER", icon:"st.motion.motion.active", backgroundColor:"#00A0DC"
@@ -82,25 +87,34 @@ metadata {
       state "trigger", label:"TRIGGER", icon:"st.motion.motion.active", backgroundColor:"#00A0DC"
       state "exec", label:"EXEC", icon:"st.motion.motion.active", backgroundColor:"#e86d13"
     }
-    standardTile("refresh", "device.refresh", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
-      state "default", label:"", action:"refresh.refresh", icon:"st.secondary.refresh"
+    standardTile("s1", "device.s1", decoration: "flat", width: 1, height: 1) {
+      state "default", label:"S1", icon:"st.Outdoor.outdoor8"
+      state "open", label:"OPEN", icon:"st.Transportation.transportation12", backgroundColor:"#ff0000"
     }
+    standardTile("s2", "device.s2", decoration: "flat", width: 1, height: 1) {
+      state "default", label:"s2", icon:"st.Health & Wellness.health9"
+      state "operating", label:'${name}', icon:"st.motion.motion.active", backgroundColor:"##00A0DC"
+    }
+
     main "toggle"
-    details(["toggle", "open", "close", "pedestrian", "sendToggle", "r1", "r2", "r3", "r4", "refresh"])
+    details(["toggle", "open", "close", "pedestrian", "sendToggle", "refresh", "r1", "r2", "r3", "r4", "s1", "s2"])
   }
 }
 
 // Globals
-private getBINARY_INPUT_CLUSTER() { 0x000F }
+private getBINARY_INPUT_CLUSTER()     { 0x000F }
+private getPRESENT_VALUE_ATTRIBUTE()  { 0x0055 }
+private getZCL_TYPE_LOGICAL_BOOLEAN() { "10"   }
 
 // Parse incoming device messages to generate events
 def parse(String description) {
-  Map eventMap = zigbee.getEvent(description)
+  Map eventMap = [:]
   Map eventDescMap = zigbee.parseDescriptionAsMap(description)
 
-  if (!eventMap && eventDescMap) {
-    eventMap = [:]
+  if (eventDescMap) {
+    log.debug "eventDescMap: $eventDescMap"
     if (eventDescMap?.clusterInt == zigbee.ONOFF_CLUSTER) {
+      log.debug "Switch Cluster event received"
       if(eventDescMap?.sourceEndpoint == "EA") {
 	    eventMap["name"] = "r1"
       }
@@ -127,7 +141,41 @@ def parse(String description) {
     }
     else if(eventDescMap?.clusterInt == BINARY_INPUT_CLUSTER) {
       log.debug "Binary Input Cluster event received"
-      log.debug "eventDescMap: $eventDescMap"
+      if(eventDescMap?.attrInt == PRESENT_VALUE_ATTRIBUTE && eventDescMap?.encoding == ZCL_TYPE_LOGICAL_BOOLEAN) {
+        if(eventDescMap?.endpoint == "EA") {
+	      eventMap["name"] = "s1"
+          if(eventDescMap?.value == "01") {
+            eventMap["value"] = "open"
+            sendEvent(name: "contact", value: "open")
+          }
+          else {
+            eventMap["value"] = "default"
+            sendEvent(name: "door", value: "closed")
+            sendEvent(name: "contact", value: "closed")
+          }
+      	}
+        else if(eventDescMap?.endpoint == "EB") {
+	      eventMap["name"] = "s2"
+          if(eventDescMap?.value == "01") {
+            eventMap["value"] = "operating"
+          }
+          else {
+            eventMap["value"] = "default"
+            
+            def switchattr = device.latestValue("contact")
+            log.debug "Contact state: $switchattr"
+            if(switchattr == "open") {
+              sendEvent(name: "door", value: "open")
+            }
+          }
+      	}
+        else {
+          log.error "Invalid endpoint for Binary Input cluster"
+        }
+      }
+      else {
+        log.debug "eventDescMap: $eventDescMap"
+      }
     }
     else {
       log.warn "DID NOT PARSE MESSAGE for description : $description"
@@ -136,16 +184,17 @@ def parse(String description) {
   }
 
   if (eventMap) {
-    sendEvent(eventMap)
+    log.debug "eventMap: $eventMap"
+    runIn(1, sendEvent, [data: eventMap]) // To slow things down
   }
 }
 
 def open() {
-  zigbee.command(zigbee.ONOFF_CLUSTER, 0x01, "", [destEndpoint: 0xEA]) + sendEvent(name: "r1", value: "trigger") + runIn(6, finishOpening)
+  zigbee.command(zigbee.ONOFF_CLUSTER, 0x01, "", [destEndpoint: 0xEA]) + sendEvent(name: "r1", value: "trigger")
 }
 
 def close() {
-  zigbee.command(zigbee.ONOFF_CLUSTER, 0x01, "", [destEndpoint: 0xEB]) + sendEvent(name: "r2", value: "trigger") + runIn(6, finishClosing)
+  zigbee.command(zigbee.ONOFF_CLUSTER, 0x01, "", [destEndpoint: 0xEB]) + sendEvent(name: "r2", value: "trigger")
 }
 
 def openPedestrian() {
@@ -156,16 +205,6 @@ def sendToggle() {
   zigbee.command(zigbee.ONOFF_CLUSTER, 0x01, "", [destEndpoint: 0xED]) + sendEvent(name: "r4", value: "trigger")
 }
 
-def finishOpening() {
-  sendEvent(name: "door", value: "open")
-  sendEvent(name: "contact", value: "open")
-}
-
-def finishClosing() {
-  sendEvent(name: "door", value: "closed")
-  sendEvent(name: "contact", value: "closed")
-}
-
 /**
  * PING is used by Device-Watch in attempt to reach the Device
  **/
@@ -174,12 +213,13 @@ def ping() {
 }
 
 def refresh() {
-  // readAttribute(ONOFF_CLUSTER, 0x0000)
-  sendEvent(name: "r1", value: "default")
-  runIn(1, sendEvent(name: "r2", value: "default"))
-  runIn(2, sendEvent(name: "r3", value: "default"))
-  runIn(3, sendEvent(name: "r4", value: "default"))
-  zigbee.onOffRefresh() + zigbee.onOffConfig()
+  sendEvent(name: "r1", value: "default", isStateChange: true)
+  sendEvent(name: "r2", value: "default", isStateChange: true)
+  sendEvent(name: "r3", value: "default", isStateChange: true)
+  sendEvent(name: "r4", value: "default", isStateChange: true)
+  zigbee.onOffRefresh() +
+    zigbee.readAttribute(BINARY_INPUT_CLUSTER, PRESENT_VALUE_ATTRIBUTE, [destEndpoint: 0xEA]) +
+    zigbee.readAttribute(BINARY_INPUT_CLUSTER, PRESENT_VALUE_ATTRIBUTE, [destEndpoint: 0xEB])
 }
 
 def configure() {
